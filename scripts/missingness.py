@@ -49,10 +49,9 @@ group_missing = (
            .mul(100)  # convert to percentage
            .round(1))  # round to one decimal
     # flatten the grouped result back into a regular dataframe
-    .reset_index(())
-
-
+    .reset_index()
 )
+# print(group_missing.columns.tolist())
 
 
 # Patient count per diagnosis group
@@ -101,3 +100,14 @@ with open(f"{OUT}/missingness_report.txt", "w") as f:
     f.write(group_missing.to_string(index=False))
 
 print(f"\nReport saved to {OUT}/missingness_report.txt")
+
+
+'''
+isnull().mean() --> is the standard pandas pattern for computing missingness rates
+
+groupby.apply() --> is how you run the same calc on subgroups of your data seperately
+                    Here the subgroups are the diagnosis labels
+                    this is will come up in every data analysis script written
+with open() as f --> is how you write text to a file in Python. the with keyword automatically
+                     closes the file when the block finishes even if something goes wrong
+'''

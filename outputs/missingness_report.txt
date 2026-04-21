@@ -1,0 +1,24 @@
+MISSINGNESS REPORT
+==================================================
+
+OVERALL MISSINGNESS RATE PER CONCEPT
+       concept  pct_missing
+      troponin         69.0
+           wbc         29.0
+blood_pressure         31.0
+
+PATIENT COUNT PER DIAGNOSIS GROUP
+    diagnosis  n_patients
+        other          74
+heart_failure           9
+       sepsis           8
+     acute_mi           7
+    pneumonia           2
+
+MISSINGNESS RATE PER CONCEPT BY DIAGNOSIS GROUP
+    diagnosis  troponin  wbc  blood_pressure
+     acute_mi       0.0 42.9            42.9
+heart_failure      55.6 11.1            66.7
+        other      81.1 28.4            24.3
+    pneumonia     100.0 50.0             0.0
+       sepsis      25.0 37.5            50.0
