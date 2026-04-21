@@ -1,0 +1,18 @@
+IMPUTATION COMPARISON: STANDARD VS OUTCOME-CONDITIONED
+======================================================================
+
+       concept  mae_conditioned  mae_standard  rmse_conditioned  rmse_standard  mae_improvement  rmse_improvement         verdict
+blood_pressure           24.692        23.385            29.823         26.233            1.307             3.590 standard better
+      troponin            0.199         0.178             0.291          0.286            0.021             0.005 standard better
+           wbc            5.067         4.464             7.126          6.158            0.603             0.968 standard better
+
+SUMMARY
+======================================================================
+blood_pressure: outcome conditioning was worse by 1.307 MAE units
+troponin: outcome conditioning was worse by 0.021 MAE units
+wbc: outcome conditioning was worse by 0.603 MAE units
+
+NOTE: Results are on MIMIC-IV demo cohort (100 patients).
+Group sizes of 7-9 patients per diagnosis are too small for
+MICE to learn within-group patterns reliably.
+Full MIMIC-IV experiments required to properly evaluate the direction.

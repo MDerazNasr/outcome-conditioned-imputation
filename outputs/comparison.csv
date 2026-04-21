@@ -1,0 +1,4 @@
+concept,mae_conditioned,mae_standard,rmse_conditioned,rmse_standard,mae_improvement,rmse_improvement,verdict
+blood_pressure,24.692,23.385,29.823,26.233,1.307,3.59,standard better
+troponin,0.199,0.178,0.291,0.286,0.021,0.005,standard better
+wbc,5.067,4.464,7.126,6.158,0.603,0.968,standard better
