@@ -1,21 +1,21 @@
-# ── IMPORTS ────────────────────────────────────────────────────────────────
+# imports
 import pandas as pd        # for data manipulation
 import numpy as np         # for numerical operations
 import miceforest as mf    # for MICE imputation
 import os
 
-# ── PATHS ──────────────────────────────────────────────────────────────────
+# paths
 OUT = "outputs"
 os.makedirs(OUT, exist_ok=True)
 
-# ── LOAD COHORT ────────────────────────────────────────────────────────────
+# load cohort
 cohort = pd.read_csv(f"{OUT}/cohort.csv")   # same cohort as script 3
 # natural and simulated missingness intact
 
-# ── DEFINE CONCEPTS ────────────────────────────────────────────────────────
+# define concepts
 CONCEPTS = ["troponin", "wbc", "blood_pressure"]
 
-# ── STEP 1: RECREATE THE EXACT SAME HOLDOUT AS SCRIPT 3 ───────────────────
+# RECREATE THE EXACT SAME HOLDOUT AS SCRIPT 3
 # this is critical
 # we must withhold the exact same cells as script 3
 # otherwise the comparison in script 5 is not fair
@@ -37,28 +37,17 @@ ground_truth = cohort[CONCEPTS].copy()
 impute_df = cohort[CONCEPTS].copy()
 impute_df[holdout_mask] = np.nan
 
-# ── STEP 2: GET THE DIAGNOSIS GROUPS ──────────────────────────────────────
-# this is what makes script 4 different from script 3
-# instead of imputing on the full cohort ignoring diagnosis
-# we split the cohort by diagnosis group first
-# then impute within each group separately
-#
-# the intuition: a sepsis patient's missing WBC should be estimated
-# using other sepsis patients, not a mixed population of ICU patients
-# the known diagnosis constrains what the missing value probably looks like
+# Identify which cells are missing in the data we feed to the imputer
+# This includes original missing values AND our artificial holdout
+missing_mask = impute_df.isnull()
 
+# GET THE DIAGNOSIS GROUPS
 # get all unique diagnosis labels
 diagnosis_groups = cohort["diagnosis"].unique()
-# other, heart_failure, sepsis, acute_mi, pneumonia
 
-# ── STEP 3: IMPUTE WITHIN EACH DIAGNOSIS GROUP ────────────────────────────
-# we will collect imputed values here
-# start with a copy of the masked dataframe
-# then fill in group by group
-
+# IMPUTE WITHIN EACH DIAGNOSIS Group
 # starts with NaN where holdout mask applied
 conditioned_imputed = impute_df.copy()
-# we fill these in group by group below
 
 for diagnosis in diagnosis_groups:
 
@@ -68,61 +57,57 @@ for diagnosis in diagnosis_groups:
     # get the concept values for just this group
     group_data = impute_df.loc[group_idx, CONCEPTS].copy()
 
-    # check if this group has enough patients to run MICE
-    # MICE needs at least 2 patients to build a model
-    # if a group is too small we fall back to standard imputation
-    # this handles the pneumonia group which only has 2 patients
+    # check if this group has any missing values to impute
+    if not group_data.isnull().any().any():
+        conditioned_imputed.loc[group_idx, CONCEPTS] = group_data
+        continue
 
-    if len(group_data) < 4:
+    # miceforest requires a minimum number of samples to build its models (LightGBM)
+    # and to perform mean matching. Small groups often cause IndexError in mean matching.
+    # We increase the threshold to 20 to ensure stability.
+    if len(group_data) < 20:
         # fallback: use the group mean for imputation
-        # this is still outcome conditioned because we are using
-        # statistics from the same diagnosis group
-        # it is just a simpler model than MICE
         for concept in CONCEPTS:
             missing_in_group = group_data[concept].isnull()
             if missing_in_group.any():
                 group_mean = group_data[concept].mean()
                 if pd.isna(group_mean):
-                    # if the whole group is missing this concept
-                    # fall back to global mean
+                    # if the whole group is missing this concept, fall back to global mean
                     group_mean = cohort[concept].mean()
                 group_data.loc[missing_in_group, concept] = group_mean
         conditioned_imputed.loc[group_idx, CONCEPTS] = group_data
-        continue   # move to next diagnosis group
-
-    # check if this group has any missing values to impute
-    # if nothing is missing in this group we skip MICE entirely
-    if not group_data.isnull().any().any():
-        conditioned_imputed.loc[group_idx, CONCEPTS] = group_data
         continue
 
+    # miceforest 6.0.5 requires a reset index starting from 0
+    original_group_index = group_data.index
+    group_data_reset = group_data.reset_index(drop=True)
+
     # run MICE on this diagnosis group only
-    # same settings as script 3 for fair comparison
     kernel = mf.ImputationKernel(
-        data=group_data,
-        save_all_iterations=True,
+        data=group_data_reset,
+        save_all_iterations_data=True,
         random_state=42
     )
-    kernel.mice(3)
+    # Reduce iterations to 2 for smaller datasets to avoid potential overfit/stability issues
+    kernel.mice(2)
     group_imputed = kernel.complete_data()
 
-    # write the imputed values back into the full results dataframe
+    # restore the original index so we can map back
+    group_imputed.index = original_group_index
+
+    # write back
     conditioned_imputed.loc[group_idx, CONCEPTS] = group_imputed
 
-# ── STEP 4: MEASURE IMPUTATION ERROR ON HOLDOUT ROWS ─────────────────────
-# identical measurement logic to script 3
-# we measure only on the rows we deliberately withheld
-# so the comparison against script 3 is direct and fair
-
+# MEASURE IMPUTATION ERROR ON HOLDOUT ROWS
 results = []
-
 for concept in CONCEPTS:
     was_held_out = holdout_mask[concept]
     real = ground_truth.loc[was_held_out, concept]
     pred = conditioned_imputed.loc[was_held_out, concept]
     mae = (real - pred).abs().mean().round(3)
     rmse = round(((real - pred) ** 2).mean() ** 0.5, 3)
-    n_imputed = was_held_out.sum()
+
+    n_imputed = missing_mask[concept].sum()
 
     results.append({
         "concept": concept,
@@ -132,18 +117,14 @@ for concept in CONCEPTS:
         "method": "conditioned_imputation"
     })
 
-# ── STEP 5: SAVE RESULTS ───────────────────────────────────────────────────
+# Save results
 results_df = pd.DataFrame(results)
-
-# save the fully imputed cohort
 conditioned_cohort = cohort.copy()
 conditioned_cohort[CONCEPTS] = conditioned_imputed
 conditioned_cohort.to_csv(f"{OUT}/conditioned_imputed.csv", index=False)
-
-# save the error metrics
 results_df.to_csv(f"{OUT}/conditioned_results.csv", index=False)
 
-# print a readable summary
+# print summary
 print("=" * 50)
 print("OUTCOME-CONDITIONED IMPUTATION RESULTS")
 print("=" * 50)
